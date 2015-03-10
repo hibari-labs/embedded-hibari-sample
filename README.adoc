@@ -1,0 +1,87 @@
+== Embedded Hibari Sample Application
+
+A sample Erlang/OTP application with embedded Hibari DB server
+
+== Getting Started
+
+=== Requirements
+
+- Erlang/OTP 17.x
+- Unix-like operating system that can run Erlang/OTP 17.x
+  * GNU/Linux -- Ubuntu, Debian, Fedora, CentOS, CoreOS, etc.
+  * Mac OS X
+  * BSD -- FreeBSD
+  * illumos -- SmartOS, OmniOS
+
+=== Build It
+
+----
+$ make deps
+$ make compile
+----
+
+=== Run It
+
+This will start the application with embedded single-node Hibari DB
+server.
+
+----
+$ make run
+Erlang/OTP 17 [erts-6.3] [source] [64-bit] [smp:8:8] [async-threads:10] [hipe] [kernel-poll:false]
+
+Eshell V6.3  (abort with ^G)
+(emb-hibari@127.0.0.1)1>
+=INFO REPORT==== 11-Mar-2015::00:07:43 ===
+[{module,partition_detector_server},{line,207},{msg,"Partition detector: active status on node 'emb-hibari@127.0.0.1'"}]
+=INFO REPORT==== 11-Mar-2015::00:07:43 ===
+[{module,congestion_watcher_server},{line,239},{msg,"20150311000743 [{0,0},{0,0},{0,0}]"}]
+=INFO REPORT==== 11-Mar-2015::00:07:43 ===
+[{module,gmt_hlog_common},{line,1496},{msg,"Scheduling next scavenger 10337 seconds from now."}]
+=INFO REPORT==== 11-Mar-2015::00:07:43 ===
+[{module,brick_admin},{line,305},{msg,"normal start, Args = []"}]
+----
+
+Bootstrap the Admin server. Run this only at first run.
+
+----
+(emb-hibari@127.0.0.1)1> eh_admin_client:bootstrap().
+
+...(lots of messages)...
+----
+
+Open link:http://localhost:23080/[http://localhost:23080/] with a web
+browser. You will see Hibari Admin Server's management console. You
+can create tables from there.
+
+To stop, use Erlang shell command +q()+. You might want to stop epmd
+(Erlang Port Mapper Daemon) too. (e.g. +sudo killall -QUIT epmd+)
+
+
+== Under the Hood
+
+Check out the following files:
+
+- link:rebar.config[rebar.config] for dependency
+- link:src/eh_app.erl[eh_app.erl]'s +manual_start/0
+- link:src/eh_admin_client.erl[eh_admin_client.erl] for bootstrap process
+
+All Hibari data files will be created inside +./hibari/+ directory
+(except +./Schema.local+). You can change the data file location by
+link:rel/files/sys.config[sys.config].
+
+
+== TODOs
+
+- Replace +error(1)+ in +eh_admin_client+ with better errors
+- Create tables from the application
+- Demonstrate CRUD operations
+- Run checkpoint operation
+- Add multi-node configuration
+- Demonstrate node down and recovery
+- ...
+
+
+== License
+
+embedded-hibari-sample is open-sourced under the Apache 2.0 license.
+See the link:LICENSE[LICENSE] file for details.
