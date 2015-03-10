@@ -1,0 +1,27 @@
+{application, embedded_hibari,
+ [
+  {description, "Embedded Hibari Sample Application"},
+  {vsn, "0.1.0"},
+  {modules, [eh_app,
+             eh_sup,
+             eh_admin_client
+            ]},
+  {registered, [eh_sup
+               ]},
+  {applications, [kernel,
+                  stdlib,
+                  sasl,
+                  crypto,
+                  inets,
+                  riak_err,
+                  cluster_info,
+                  gmt_util,
+                  partition_detector,
+                  congestion_watcher,
+                  gdss_brick,
+                  gdss_client,
+                  gdss_admin
+                 ]},
+  {mod, {eh_app, []}},
+  {env, []}
+ ]}.
