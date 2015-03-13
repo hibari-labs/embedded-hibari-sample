@@ -13,16 +13,16 @@ A sample Erlang/OTP application with embedded Hibari DB server
   * BSD -- FreeBSD
   * illumos -- SmartOS, OmniOS
 
-=== Build It
+=== Building the Application
 
 ----
 $ make deps
 $ make compile
 ----
 
-=== Run It
+=== Start the Application
 
-This will start the application with embedded single-node Hibari DB
++make run+ starts the application with embedded single-node Hibari DB
 server.
 
 ----
@@ -31,36 +31,81 @@ Erlang/OTP 17 [erts-6.3] [source] [64-bit] [smp:8:8] [async-threads:10] [hipe] [
 
 Eshell V6.3  (abort with ^G)
 (emb-hibari@127.0.0.1)1>
-=INFO REPORT==== 11-Mar-2015::00:07:43 ===
-[{module,partition_detector_server},{line,207},{msg,"Partition detector: active status on node 'emb-hibari@127.0.0.1'"}]
-=INFO REPORT==== 11-Mar-2015::00:07:43 ===
-[{module,congestion_watcher_server},{line,239},{msg,"20150311000743 [{0,0},{0,0},{0,0}]"}]
-=INFO REPORT==== 11-Mar-2015::00:07:43 ===
-[{module,gmt_hlog_common},{line,1496},{msg,"Scheduling next scavenger 10337 seconds from now."}]
-=INFO REPORT==== 11-Mar-2015::00:07:43 ===
-[{module,brick_admin},{line,305},{msg,"normal start, Args = []"}]
 ----
 
-Bootstrap the Admin server. Run this only at first run.
+.hibari/log/console.log
+----
+$ tail -f hibari/log/console.log
+2015-03-13 21:25:47.846 [info] <0.7.0> Application lager started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:47.849 [info] <0.7.0> Application cluster_info started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:47.855 [info] <0.7.0> Application gmt_util started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:47.864 [info] <0.92.0>@partition_detector_server:init:207 Partition detector: active status on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:47.874 [info] <0.7.0> Application partition_detector started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:47.889 [info] <0.103.0>@congestion_watcher_server:do_mark:239 mark: 20150313212547 [{0,0},{0,0},{0,0}]
+2015-03-13 21:25:47.889 [info] <0.7.0> Application congestion_watcher started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:48.064 [info] <0.115.0>@gmt_hlog_common:schedule_next_daily_scavenger:1496 Scheduling next scavenger 20052 seconds from now.
+2015-03-13 21:25:48.071 [info] <0.7.0> Application gdss_brick started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:48.079 [info] <0.7.0> Application gdss_client started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:48.080 [info] <0.132.0>@brick_admin:start:305 normal start, Args = []
+2015-03-13 21:25:48.121 [info] <0.7.0> Application gdss_admin started on node 'emb-hibari@127.0.0.1'
+2015-03-13 21:25:48.124 [info] <0.7.0> Application embedded_hibari started on node 'emb-hibari@127.0.0.1'
+----
+
+There is a very simple demo function called +eh_client_demo:demo/1+.
+Try it from Erlang shell.
 
 ----
-(emb-hibari@127.0.0.1)1> eh_admin_client:bootstrap().
+(emb-hibari@127.0.0.1)1> eh_client_demo:demo().
+Bootstrapping Hibari... ok
+ok
+Wait for 30 seconds.
+Creating table 'demo'... ok
+ok
+Wait for 30 seconds.
 
-...(lots of messages)...
+brick_simple:add(demo, <<"/100/1/A">>, <<"AAA">>)
+   -> {ok,1426252510468011}
+
+brick_simple:get_many(demo, <<"/100/1">>, 100)
+    -> {ok,{[{<<"/100/1/A">>,1426252510468011,<<"AAA">>}],false}}
+
+brick_simple:do(demo, [txn,
+                       {set,<<"/100/1/A">>,0,<<"AAA">>,0,[]},
+                       {set,<<"/100/1/B">>,0,<<"AAA">>,0,[]}])
+    -> [{ok,1426252510469528},{ok,1426252510469532}]
+
+brick_simple:get_many(demo, <<"/100/1">>, 100)
+    -> {ok,{[{<<"/100/1/A">>,1426252510469528,<<"AAA">>},
+             {<<"/100/1/B">>,1426252510469532,<<"AAA">>}],
+            false}}
+
+
+ok
+(emb-hibari@127.0.0.1)2>
 ----
 
-Open link:http://localhost:23080/[http://localhost:23080/] with a web
-browser. You will see Hibari Admin Server's management console. You
-can create tables from there.
+=== Admin Server's Web-based Management Console
 
-To stop, use Erlang shell command +q()+. You might want to stop epmd
-(Erlang Port Mapper Daemon) too. (e.g. +sudo killall -QUIT epmd+)
+To access Hibari admin server's web-based management console, open
+link:http://localhost:23080/[http://localhost:23080/] with a web
+browser.
+
+
+=== Stop the Application
+
+To stop the application with the embedded Hibari DB server, use Erlang
+shell command +q()+.
+
+You might want to stop epmd (Erlang Port Mapper Daemon) process too.
+(e.g. +sudo killall -QUIT epmd+)
+
 
 
 == Under the Hood
 
 Check out the following files:
 
+- link:src/eh_client_demo.erl[eh_client_demo.erl]
 - link:rebar.config[rebar.config] for dependency
 - link:src/eh_app.erl[eh_app.erl]'s +manual_start/0
 - link:src/eh_admin_client.erl[eh_admin_client.erl] for bootstrap process
@@ -73,8 +118,8 @@ link:rel/files/sys.config[sys.config].
 == TODOs
 
 - Replace +error(1)+ in +eh_admin_client+ with better errors
-- Create tables from the application
-- Demonstrate CRUD operations
+- (*DONE*) Create tables from the application
+- (*IN-PROGRESS*) Demonstrate CRUD operations
 - Run checkpoint operation
 - Add multi-node configuration
 - Demonstrate node down and recovery
