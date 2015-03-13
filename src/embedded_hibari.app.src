@@ -13,7 +13,7 @@
                   sasl,
                   crypto,
                   inets,
-                  riak_err,
+                  lager,
                   cluster_info,
                   gmt_util,
                   partition_detector,

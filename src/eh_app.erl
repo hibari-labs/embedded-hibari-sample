@@ -46,7 +46,7 @@ manual_start() ->
     ok = application:start(crypto),
     ok = application:start(inets),
     %% lager:start(),
-    ok = application:start(riak_err),
+    ok = application:start(lager),
     ok = application:start(cluster_info),
     ok = application:start(gmt_util),
     ok = application:start(partition_detector),

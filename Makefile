@@ -1,9 +1,8 @@
 REBAR = ./rebar
 # RELX  = ./relx
 
-# @TODO FIXME: This doesn't work with make on FreeBSD.
-# OTPREL = $(shell erl -noshell -eval 'io:format(erlang:system_info(otp_release)), halt().')
-OTPREL = 17
+# @TODO FIXME: This doesn't work with the default `make` program on FreeBSD.
+OTPREL = $(shell erl -noshell -eval 'io:format(erlang:system_info(otp_release)), halt().')
 
 PLT = $(HOME)/.dialyzer_plt.$(OTPREL)
 ERLDIRS = ./include ./src ./test
@@ -46,7 +45,7 @@ clean:
 	@( rm -f ./Schema.local )
 
 run:
-	@( mkdir -p hibari/logs hibari/data hibari/root )
+	@( mkdir -p hibari/log hibari/data hibari/root )
 	@( cp -rp deps/gdss_admin/priv/root/htdocs hibari/root/)
 	@( erl -pa ebin deps/*/ebin -name 'emb-hibari@127.0.0.1' \
 	       -config rel/files/sys.config -s eh_app manual_start )
