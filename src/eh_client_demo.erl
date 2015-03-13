@@ -41,7 +41,7 @@ demo() ->
 bootstrap() ->
     io:format("Bootstrapping Hibari... "),
     Res = (catch eh_admin_client:bootstrap()),
-    io:format("~p~n", [Res2]),
+    io:format("~p~n", [Res]),
     case Res of
         ok ->
             io:format("Wait for 30 seconds.~n"),
