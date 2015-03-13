@@ -16,32 +16,76 @@
 
 -module(eh_admin_client).
 
--export([bootstrap/0]).
+-export([bootstrap/0,
+         create_table/1,
+         create_table/3
+        ]).
 
--compile(export_all).
+%% DEBUG -compile(export_all).
 
+%%====================================================================
+%% Types / Macros
+%%====================================================================
+
+-define(SINGLE_NODE, 'emb-hibari@127.0.0.1').
+-define(RPC_TIMEOUT, 60000).
 
 %%====================================================================
 %% API
 %%====================================================================
 
--spec bootstrap() -> ok.
+-spec bootstrap() -> ok | no_return().
 bootstrap() ->
-    TargetNode = 'emb-hibari@127.0.0.1',
+    TargetNode = ?SINGLE_NODE,
     ok = start_epmd(),
 
-    BigDataP = true,
-    DiskLoggingP = true,
-    SyncWritesP = true,
-    VarPrefixP = false,
-    VarPrefixSep = '$/',
-    VarPrefixNum = 3,
+    BigDataP       = true,
+    DiskLoggingP   = true,
+    SyncWritesP    = false,
+    VarPrefixP     = true,
+    VarPrefixSep   = $/,
+    VarPrefixNum   = 3,
     BricksPerChain = 1,
-    NumBricks = 1,
-    ok = bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
-                         VarPrefixP, VarPrefixSep, VarPrefixNum,
-                         BricksPerChain, NumBricks),
+    NumBricks      = 1,
+    ok = do_bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
+                            VarPrefixP, VarPrefixSep, VarPrefixNum,
+                            BricksPerChain, NumBricks),
     ok.
+
+-spec create_table(atom()) -> ok | no_return().
+create_table(Table) ->
+    create_table(Table, ?SINGLE_NODE, []).
+
+-spec create_table(atom(), node(), [node()]) -> ok | no_return().
+create_table(Table, TargetNode, _Bricks) when is_atom(Table) ->
+    %% LocalP           = true,
+    BigDataP         = true,
+    DiskLoggingP     = true,
+    SyncWritesP      = false,
+    VarPrefixP       = true,
+    VarPrefixSep     = $/,
+    VarPrefixNum     = 1,
+    BricksPerChain   = 3,
+    NumNodesPerBlock = 0,
+    BlockMultFactor  = 0,
+
+    EffBricks = begin
+                    NumBricks = 12,
+                    [ TargetNode || _ <- lists:seq(1, NumBricks) ]
+                end,
+
+    %% EffBricks =
+    %%     if LocalP ->
+    %%             NumBricks = 12,
+    %%             [ TargetNode || _ <- lists:seq(1, NumBricks) ];
+    %%        true ->
+    %%             _Bricks
+    %%     end,
+    ok = do_create_table(TargetNode, Table,
+                         BigDataP, DiskLoggingP, SyncWritesP,
+                         VarPrefixP, VarPrefixSep, VarPrefixNum,
+                         BricksPerChain, NumNodesPerBlock, BlockMultFactor,
+                         EffBricks).
 
 
 %%--------------------------------------------------------------------
@@ -52,7 +96,6 @@ ping_node(TargetNode) ->
     %% See if the node is currently running  -- if it's not, we'll bail
     case {net_kernel:hidden_connect_node(TargetNode), net_adm:ping(TargetNode)} of
         {true, pong} ->
-            io:format("DEBUG: ping_node -> ok~n"),
             ok;
         {_, pang} ->
             io:format("Node ~p not responding to pings.\n"
@@ -65,9 +108,8 @@ ping_node(TargetNode) ->
     end.
 
 bootstrap_nodes(TargetNode) ->
-    case rpc:call(TargetNode, brick_admin, bootstrap_nodes, [], 60000) of
+    case rpc:call(TargetNode, brick_admin, bootstrap_nodes, [], ?RPC_TIMEOUT) of
         BootstrapNodes when is_list(BootstrapNodes) ->
-            io:format("DEBUG: bootstrap_nodes: ~p~n", [BootstrapNodes]),
             BootstrapNodes;
         {badrpc, Reason} ->
             io:format("RPC(bootstrap_nodes) to ~p failed: ~p\n"
@@ -79,9 +121,9 @@ bootstrap_nodes(TargetNode) ->
             error(1)
     end.
 
-bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
-                VarPrefixP, VarPrefixSep, VarPrefixNum,
-                BricksPerChain, NumBricks) ->
+do_bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
+                   VarPrefixP, VarPrefixSep, VarPrefixNum,
+                   BricksPerChain, NumBricks) ->
     %% read bootstrap nodes
     BootstrapNodes = bootstrap_nodes(TargetNode),
 
@@ -89,9 +131,8 @@ bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
     [ ok = ping_node(Node) || Node <- BootstrapNodes ],
 
     %% read schema filename
-    case rpc:call(hd(BootstrapNodes), brick_admin, schema_filename, [], 60000) of
+    case rpc:call(hd(BootstrapNodes), brick_admin, schema_filename, [], ?RPC_TIMEOUT) of
         SchemaFilename when is_list(SchemaFilename) ->
-            io:format("DEBUG: SchemaFilename: ~s~n", [SchemaFilename]),
             ok;
         {badrpc, Reason1} ->
             SchemaFilename = "",
@@ -107,14 +148,13 @@ bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
 
     %% bootstrap
     DataProps =
-        [ maketab_bigdata || BigDataP ]
-        ++ [ maketab_do_logging || DiskLoggingP ]
-        ++ [ maketab_do_sync || SyncWritesP ],
+        [{maketab_bigdata, BigDataP},
+         {maketab_do_logging, DiskLoggingP},
+         {maketab_do_sync, SyncWritesP}],
 
     BootstrapArgs = [SchemaFilename, DataProps, VarPrefixP, VarPrefixSep, VarPrefixNum, NumBricks, BricksPerChain, BootstrapNodes],
-    case rpc:call(hd(BootstrapNodes), brick_admin, bootstrap_local, BootstrapArgs, 60000) of
+    case rpc:call(hd(BootstrapNodes), brick_admin, bootstrap_local, BootstrapArgs, ?RPC_TIMEOUT) of
         ok ->
-            io:format("DEBUG: bootstrap_local -> ok.~n"),
             ok;
         {badrpc, Reason2} ->
             io:format("RPC(bootstrap) to ~p failed: ~p\n"
@@ -128,9 +168,8 @@ bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
 
     %% copy Schema.local to other Brick Admin nodes
     CopyArgs = [tl(BootstrapNodes), SchemaFilename],
-    case rpc:call(hd(BootstrapNodes), brick_admin, copy_new_schema, CopyArgs, 60000) of
+    case rpc:call(hd(BootstrapNodes), brick_admin, copy_new_schema, CopyArgs, ?RPC_TIMEOUT) of
         {ok, {_,[]}} ->
-            io:format("DEBUG: copy_new_schema -> ok.~n"),
             ok;
         {badrpc, Reason3} ->
             io:format("RPC(copy_new_schema) to ~p failed: ~p\n"
@@ -145,9 +184,79 @@ bootstrap_local(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
     io:format("ok~n"),
     ok.
 
-bootstrap(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
-          VarPrefixP, VarPrefixSep, VarPrefixNum,
-          BricksPerChain, Bricks) ->
+%% do_bootstrap(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
+%%              VarPrefixP, VarPrefixSep, VarPrefixNum,
+%%              BricksPerChain, Bricks) ->
+
+%%     %% read bootstrap nodes
+%%     BootstrapNodes = bootstrap_nodes(TargetNode),
+
+%%     %% check bootstrap nodes
+%%     [ ok = ping_node(Node) || Node <- BootstrapNodes ],
+
+%%     %% check brick nodes
+%%     [ ok = ping_node(Node) || Node <- Bricks ],
+
+%%     %% read schema filename
+%%     case rpc:call(hd(BootstrapNodes), brick_admin, schema_filename, [], ?RPC_TIMEOUT) of
+%%         SchemaFilename when is_list(SchemaFilename) ->
+%%             ok;
+%%         {badrpc, Reason1} ->
+%%             SchemaFilename = "",
+%%             io:format("RPC(schema_filename) to ~p failed: ~p\n"
+%%                       , [hd(BootstrapNodes), Reason1]),
+%%             error(1);
+%%         Unknown1 ->
+%%             SchemaFilename = "",
+%%             io:format("RPC(schema_filename) to ~p failed due to unknown response: ~p\n"
+%%                       , [hd(BootstrapNodes), Unknown1]),
+%%             error(1)
+%%     end,
+
+%%     %% bootstrap
+%%     DataProps =
+%%         [{maketab_bigdata, BigDataP},
+%%          {maketab_do_logging, DiskLoggingP},
+%%          {maketab_do_sync, SyncWritesP}],
+
+%%     BootstrapArgs = [SchemaFilename, DataProps, VarPrefixP, VarPrefixSep, VarPrefixNum,
+%%                      Bricks, BricksPerChain, BootstrapNodes],
+%%     case rpc:call(hd(BootstrapNodes), brick_admin, bootstrap, BootstrapArgs, ?RPC_TIMEOUT) of
+%%         ok ->
+%%             ok;
+%%         {badrpc, Reason2} ->
+%%             io:format("RPC(bootstrap) to ~p failed: ~p\n"
+%%                       , [hd(BootstrapNodes), Reason2]),
+%%             error(1);
+%%         Unknown2 ->
+%%             io:format("RPC(bootstrap) to ~p failed due to unknown response: ~p\n"
+%%                       , [hd(BootstrapNodes), Unknown2]),
+%%             error(1)
+%%     end,
+
+%%     %% copy Schema.local to other Brick Admin nodes
+%%     CopyArgs = [tl(BootstrapNodes), SchemaFilename],
+%%     case rpc:call(hd(BootstrapNodes), brick_admin, copy_new_schema, CopyArgs, ?RPC_TIMEOUT) of
+%%         {ok, {_,[]}} ->
+%%             ok;
+%%         {badrpc, Reason3} ->
+%%             io:format("RPC(copy_new_schema) to ~p failed: ~p\n"
+%%                       , [hd(BootstrapNodes), Reason3]),
+%%             error(1);
+%%         Unknown3 ->
+%%             io:format("RPC(copy_new_schmea) to ~p failed due to unknown response: ~p\n"
+%%                       , [hd(BootstrapNodes), Unknown3]),
+%%             error(1)
+%%     end,
+
+%%     io:format("ok~n"),
+%%     ok.
+
+do_create_table(TargetNode, Table,
+                BigDataP, DiskLoggingP, SyncWritesP,
+                VarPrefixP, VarPrefixSep, VarPrefixNum,
+                BricksPerChain, NumNodesPerBlock, BlockMultFactor,
+                Bricks) ->
 
     %% read bootstrap nodes
     BootstrapNodes = bootstrap_nodes(TargetNode),
@@ -158,55 +267,57 @@ bootstrap(TargetNode, BigDataP, DiskLoggingP, SyncWritesP,
     %% check brick nodes
     [ ok = ping_node(Node) || Node <- Bricks ],
 
-    %% read schema filename
-    case rpc:call(hd(BootstrapNodes), brick_admin, schema_filename, [], 60000) of
-        SchemaFilename when is_list(SchemaFilename) ->
-            ok;
+    MakeChainArgs = [Table, BricksPerChain, Bricks, NumNodesPerBlock, BlockMultFactor],
+    case rpc:call(hd(BootstrapNodes), brick_admin, make_chain_description, MakeChainArgs, ?RPC_TIMEOUT) of
+        Chains when is_list(Chains) ->
+            DataProps =
+                [{maketab_bigdata, BigDataP},
+                 {maketab_do_logging, DiskLoggingP},
+                 {maketab_do_sync, SyncWritesP}],
+            MakeTableArgs = [DataProps, VarPrefixP, VarPrefixSep, VarPrefixNum, Chains],
+            case rpc:call(hd(BootstrapNodes), brick_admin, make_common_table_opts, MakeTableArgs, ?RPC_TIMEOUT) of
+                BrickOpts when is_list(BrickOpts) ->
+                    %% io:format("DEBUG: BrickOpts: ~p~n", [BrickOpts]),
+                    AddTableArgs = [Table, Chains, BrickOpts],
+                    case rpc:call(hd(BootstrapNodes), brick_admin, add_table, AddTableArgs, ?RPC_TIMEOUT) of
+                        ok ->
+                            case rpc:call(hd(BootstrapNodes), brick_admin, spam_gh_to_all_nodes, []) of
+                                ok ->
+                                    ok;
+                                {badrpc, Reason4} ->
+                                    io:format("RPC(createtable-4) to ~p failed: ~p\n"
+                                              , [hd(BootstrapNodes), Reason4]),
+                                    error(1);
+                                Unknown4 ->
+                                    io:format("RPC(createtable-4) to ~p failed due to unknown response: ~p\n"
+                                              , [hd(BootstrapNodes), Unknown4]),
+                                    error(1)
+                            end;
+                        {badrpc, Reason3} ->
+                            io:format("RPC(createtable-3) to ~p failed: ~p\n"
+                                      , [hd(BootstrapNodes), Reason3]),
+                            error(1);
+                        Unknown3 ->
+                            io:format("RPC(createtable-3) to ~p failed due to unknown response: ~p\n"
+                                      , [hd(BootstrapNodes), Unknown3]),
+                            error(1)
+                    end;
+                {badrpc, Reason2} ->
+                    io:format("RPC(createtable-2) to ~p failed: ~p\n"
+                              , [hd(BootstrapNodes), Reason2]),
+                    error(1);
+                Unknown2 ->
+                    io:format("RPC(createtable-2) to ~p failed due to unknown response: ~p\n"
+                              , [hd(BootstrapNodes), Unknown2]),
+                    error(1)
+            end;
         {badrpc, Reason1} ->
-            SchemaFilename = "",
-            io:format("RPC(schema_filename) to ~p failed: ~p\n"
+            io:format("RPC(createtable-1) to ~p failed: ~p\n"
                       , [hd(BootstrapNodes), Reason1]),
             error(1);
         Unknown1 ->
-            SchemaFilename = "",
-            io:format("RPC(schema_filename) to ~p failed due to unknown response: ~p\n"
+            io:format("RPC(createtable-1) to ~p failed due to unknown response: ~p\n"
                       , [hd(BootstrapNodes), Unknown1]),
-            error(1)
-    end,
-
-    %% bootstrap
-    DataProps =
-        [ maketab_bigdata || BigDataP ]
-        ++ [ maketab_do_logging || DiskLoggingP ]
-        ++ [ maketab_do_sync || SyncWritesP ],
-
-    BootstrapArgs = [SchemaFilename, DataProps, VarPrefixP, VarPrefixSep, VarPrefixNum,
-                     Bricks, BricksPerChain, BootstrapNodes],
-    case rpc:call(hd(BootstrapNodes), brick_admin, bootstrap, BootstrapArgs, 60000) of
-        ok ->
-            ok;
-        {badrpc, Reason2} ->
-            io:format("RPC(bootstrap) to ~p failed: ~p\n"
-                      , [hd(BootstrapNodes), Reason2]),
-            error(1);
-        Unknown2 ->
-            io:format("RPC(bootstrap) to ~p failed due to unknown response: ~p\n"
-                      , [hd(BootstrapNodes), Unknown2]),
-            error(1)
-    end,
-
-    %% copy Schema.local to other Brick Admin nodes
-    CopyArgs = [tl(BootstrapNodes), SchemaFilename],
-    case rpc:call(hd(BootstrapNodes), brick_admin, copy_new_schema, CopyArgs, 60000) of
-        {ok, {_,[]}} ->
-            ok;
-        {badrpc, Reason3} ->
-            io:format("RPC(copy_new_schema) to ~p failed: ~p\n"
-                      , [hd(BootstrapNodes), Reason3]),
-            error(1);
-        Unknown3 ->
-            io:format("RPC(copy_new_schmea) to ~p failed due to unknown response: ~p\n"
-                      , [hd(BootstrapNodes), Unknown3]),
             error(1)
     end,
 
